@@ -3,713 +3,296 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GPS LoRa Tracker System</title>
+    <title>LoRa GPS Tracker</title>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- FontAwesome Icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Leaflet CSS & JS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
     <style>
-        /* Map Container Fixes */
-        #map {
-            width: 100%;
-            height: 100%;
-            z-index: 1;
-        }
-        /* Custom Scrollbars */
-        ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
-        }
-        ::-webkit-scrollbar-track {
-            background: rgba(15, 23, 42, 0.6);
-        }
-        ::-webkit-scrollbar-thumb {
-            background: rgba(51, 65, 85, 0.8);
-            border-radius: 3px;
-        }
-        /* Glassmorphism styling */
-        .glass-panel {
-            background: rgba(15, 23, 42, 0.85);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        .leaflet-container {
-            background-color: #0f172a !important;
-        }
+        body, html { height: 100%; margin: 0; padding: 0; overflow: hidden; }
+        #map { height: 100vh; width: 100vw; z-index: 1; }
+        .leaflet-bottom.leaflet-right { display: none; } /* Sakriva default Leaflet logo ako smeta */
     </style>
 </head>
-<body class="bg-slate-950 text-slate-100 h-screen w-screen flex flex-col overflow-hidden font-sans antialiased">
+<body class="bg-gray-100 font-sans">
 
-    <!-- Top Navigation Header -->
-    <header class="h-14 glass-panel z-20 px-4 flex items-center justify-between border-b border-slate-800 shrink-0">
-        <div class="flex items-center gap-3">
-            <div class="bg-blue-600/20 text-blue-400 p-2 rounded-lg border border-blue-500/30">
-                <i class="fa-solid fa-satellite-dish text-lg"></i>
-            </div>
-            <div>
-                <h1 class="font-bold text-sm sm:text-base leading-tight">LoRa GPS Praćenje</h1>
-                <p class="text-[10px] sm:text-xs text-slate-400">ESP32-C3 Receiver Hub</p>
-            </div>
+    <!-- Mapa -->
+    <div id="map"></div>
+
+    <!-- Gornja traka (Minimalistička) -->
+    <div class="absolute top-4 left-4 z-[1000] flex items-center space-x-2">
+        <!-- Dugme za otvaranje menija -->
+        <button onclick="toggleMenu()" class="bg-white p-3 rounded-full shadow-lg border border-gray-200 text-gray-700 hover:bg-gray-50 focus:outline-none transition active:scale-95">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+            </svg>
+        </button>
+        <span class="bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-full shadow-md text-xs font-bold text-gray-700 border border-gray-200" id="connection-status">
+            🔴 Nema konekcije
+        </span>
+    </div>
+
+    <!-- Brzo dugme za simulaciju u gornjem desnom uglu -->
+    <div class="absolute top-4 right-4 z-[1000]">
+        <button onclick="simulateData()" class="bg-indigo-600 text-white text-xs px-3 py-2 rounded-full shadow-lg font-medium hover:bg-indigo-700 transition active:scale-95">
+            ⚡ Simuliraj
+        </button>
+    </div>
+
+    <!-- Bočni Padajući Meni (Sidebar Drawer) -->
+    <div id="side-menu" class="fixed inset-y-0 left-0 w-80 bg-white shadow-2xl z-[2000] transform -translate-x-full transition-transform duration-300 ease-in-out flex flex-col">
+        <!-- Zaglavlje menija -->
+        <div class="p-4 bg-gray-900 text-white flex justify-between items-center">
+            <h2 class="font-bold text-lg">🛰️ LoRa Tracker Meni</h2>
+            <button onclick="toggleMenu()" class="text-gray-400 hover:text-white p-1">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
         </div>
 
-        <!-- Connection Status & Controls -->
-        <div class="flex items-center gap-2">
-            <!-- Connection Status Badge -->
-            <div id="connectionStatus" class="flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/20">
-                <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
-                <span id="statusText">Nije povezano</span>
-            </div>
-
-            <!-- Connect BT Button -->
-            <button id="connectBtBtn" onclick="openAuthModal()" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow-lg shadow-blue-600/20 transition flex items-center gap-1.5">
-                <i class="fa-bluetooth text-sm"></i>
-                <span class="hidden sm:inline">Poveži bluetooth</span>
-            </button>
-
-            <!-- Toggle Hardware Docs Modal -->
-            <button onclick="toggleDocsModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 p-2 rounded-lg text-xs font-semibold border border-slate-700 transition" title="Šema povezivanja & ESP32 Kod">
-                <i class="fa-solid fa-microchip text-sm"></i>
-            </button>
-        </div>
-    </header>
-
-    <!-- Main Content Area -->
-    <div class="flex-1 relative flex overflow-hidden">
-
-        <!-- Leaflet Map Container -->
-        <div id="map" class="w-full h-full"></div>
-
-        <!-- Overlay Floating Dashboard Controls (Top Left) -->
-        <div class="absolute top-4 left-4 z-10 flex flex-col gap-2 max-w-xs w-full pointer-events-none">
-            <!-- Phone Location Toggle -->
-            <div class="pointer-events-auto glass-panel p-2.5 rounded-xl flex items-center justify-between shadow-xl">
-                <div class="flex items-center gap-2">
-                    <i class="fa-solid fa-location-arrow text-emerald-400"></i>
-                    <span class="text-xs font-medium">Moja Lokacija</span>
-                </div>
-                <button id="toggleUserLocBtn" onclick="toggleUserLocation()" class="bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 border border-emerald-500/30 px-2.5 py-1 rounded-md text-xs font-semibold transition">
-                    Uključi
-                </button>
-            </div>
+        <!-- Sadržaj menija (skrolabilan) -->
+        <div class="p-4 flex-1 overflow-y-auto space-y-6 text-sm">
             
-            <!-- Quick Stats Banner -->
-            <div class="pointer-events-auto glass-panel p-2.5 rounded-xl flex items-center justify-around shadow-xl text-center">
-                <div>
-                    <div class="text-[10px] text-slate-400 uppercase font-semibold">Trakeri</div>
-                    <div id="activeTrackersCount" class="text-base font-bold text-blue-400">0</div>
-                </div>
-                <div class="h-6 w-px bg-slate-800"></div>
-                <div>
-                    <div class="text-[10px] text-slate-400 uppercase font-semibold">Paketa</div>
-                    <div id="packetsReceivedCount" class="text-base font-bold text-emerald-400">0</div>
-                </div>
-                <div class="h-6 w-px bg-slate-800"></div>
-                <div>
-                    <div class="text-[10px] text-slate-400 uppercase font-semibold">Mod</div>
-                    <div id="systemMode" class="text-xs font-bold text-amber-400 mt-1">Standby</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Overlay Map Layer Controls (Top Right) -->
-        <div class="absolute top-4 right-4 z-10 flex flex-col gap-2 pointer-events-none">
-            <div class="pointer-events-auto glass-panel p-1.5 rounded-xl shadow-xl flex flex-col gap-1">
-                <button onclick="setMapLayer('street')" id="btn-layer-street" class="px-2.5 py-1.5 rounded-lg text-xs font-medium text-left flex items-center gap-2 bg-blue-600/30 text-blue-300 border border-blue-500/30">
-                    <i class="fa-solid fa-map"></i> Standardna
-                </button>
-                <button onclick="setMapLayer('satellite')" id="btn-layer-satellite" class="px-2.5 py-1.5 rounded-lg text-xs font-medium text-left flex items-center gap-2 text-slate-400 hover:bg-slate-800">
-                    <i class="fa-solid fa-globe"></i> Satelitska
-                </button>
-                <button onclick="setMapLayer('topo')" id="btn-layer-topo" class="px-2.5 py-1.5 rounded-lg text-xs font-medium text-left flex items-center gap-2 text-slate-400 hover:bg-slate-800">
-                    <i class="fa-solid fa-mountain font-bold"></i> Topografska
-                </button>
-            </div>
-        </div>
-
-        <!-- Bottom Trackers Drawer Panel -->
-        <div id="bottomDrawer" class="absolute bottom-0 left-0 right-0 z-10 glass-panel rounded-t-2xl border-t border-slate-800 transition-all duration-300 max-h-[45vh] flex flex-col shadow-2xl">
-            <!-- Drawer Header / Handle -->
-            <div class="p-3 border-b border-slate-800 flex items-center justify-between cursor-pointer" onclick="toggleDrawer()">
-                <div class="flex items-center gap-2">
-                    <i class="fa-solid fa-list-ul text-blue-400 text-sm"></i>
-                    <h3 class="font-bold text-xs uppercase tracking-wider text-slate-300">Aktivni Trakeri</h3>
-                </div>
-                <div class="flex items-center gap-2">
-                    <!-- Simulation trigger btn -->
-                    <button onclick="event.stopPropagation(); simulateIncomingPacket();" class="bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition flex items-center gap-1">
-                        <i class="fa-solid fa-vial text-xs"></i> Simuliraj paket
-                    </button>
-                    <i id="drawerIcon" class="fa-solid fa-chevron-down text-slate-400 text-xs"></i>
-                </div>
-            </div>
-
-            <!-- Tracker List / Table -->
-            <div id="drawerContent" class="p-3 overflow-y-auto space-y-2 flex-1">
-                <div id="emptyTrackerState" class="text-center py-6 text-slate-500 text-xs">
-                    Nema aktivnih trakera. Povežite Bluetooth resiver ili pokrenite simulaciju paketa.
-                </div>
-                <div id="trackerList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2"></div>
-            </div>
-        </div>
-
-    </div>
-
-    <!-- AUTHENTICATION & BT MODAL -->
-    <div id="authModal" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 hidden">
-        <div class="glass-panel p-6 rounded-2xl max-w-md w-full border border-slate-800 shadow-2xl space-y-5">
-            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
-                <div class="flex items-center gap-2 text-blue-400">
-                    <i class="fa-solid fa-shield-halved text-xl"></i>
-                    <h3 class="font-bold text-lg text-slate-100">Sigurnosna Autentifikacija</h3>
-                </div>
-                <button onclick="closeAuthModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
-            </div>
-
-            <p class="text-xs text-slate-400 leading-relaxed">
-                Unesite sigurnosnu lozinku vašeg LoRa resivera da biste uspostavili zaštićenu Bluetooth konekciju sa uređajem.
-            </p>
-
+            <!-- Sekcija: Bluetooth Konekcija -->
             <div class="space-y-2">
-                <label class="text-xs font-semibold text-slate-300">Lozinka Prijemnika (Default: <code class="text-blue-400">admin123</code>)</label>
-                <div class="relative">
-                    <input type="password" id="devicePassword" value="admin123" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500 transition" placeholder="Unesite lozinku...">
+                <h3 class="font-semibold text-gray-700 uppercase text-xs tracking-wider">Bluetooth Prijemnik</h3>
+                <button onclick="connectBLE()" class="w-full bg-blue-600 text-white py-2 px-4 rounded-lg shadow font-medium hover:bg-blue-700 transition">
+                    Poveži se sa uređajem
+                </button>
+            </div>
+
+            <!-- Sekcija: Izbor Mape -->
+            <div class="space-y-2">
+                <h3 class="font-semibold text-gray-700 uppercase text-xs tracking-wider">Stil Mape</h3>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="setLayer('standard')" class="p-2 border rounded-lg text-center hover:bg-gray-50 font-medium text-gray-700 bg-gray-100" id="btn-standard">Standardna</button>
+                    <button onclick="setLayer('satellite')" class="p-2 border rounded-lg text-center hover:bg-gray-50 font-medium text-gray-700" id="btn-satellite">Satelitska</button>
+                    <button onclick="setLayer('topo')" class="p-2 border rounded-lg text-center hover:bg-gray-50 font-medium text-gray-700" id="btn-topo">Topografska</button>
+                    <button onclick="setLayer('dark')" class="p-2 border rounded-lg text-center hover:bg-gray-50 font-medium text-gray-700" id="btn-dark">Tamna</button>
                 </div>
             </div>
 
-            <div id="authError" class="text-xs text-red-400 bg-red-500/10 p-2.5 rounded-lg border border-red-500/20 hidden">
-                <i class="fa-solid fa-triangle-exclamation mr-1"></i> Pogrešna lozinka! Pokušajte ponovo.
+            <!-- Sekcija: Lista Trakera -->
+            <div class="space-y-2">
+                <h3 class="font-semibold text-gray-700 uppercase text-xs tracking-wider">Aktivni Trakeri</h3>
+                <div id="tracker-list" class="space-y-2">
+                    <p class="text-gray-400 text-xs italic">Nema aktivnih trakera...</p>
+                </div>
             </div>
 
-            <div class="flex gap-2 pt-2">
-                <button onclick="attemptBtConnect()" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-2.5 rounded-xl font-semibold text-xs shadow-lg shadow-blue-600/30 transition flex items-center justify-center gap-2">
-                    <i class="fa-bluetooth"></i> Poveži Web Bluetooth
-                </button>
-                <button onclick="enableDemoMode()" class="bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/30 px-4 py-2.5 rounded-xl font-semibold text-xs transition">
-                    Demo Mod
+            <!-- Sekcija: Moja Lokacija -->
+            <div class="space-y-2">
+                <h3 class="font-semibold text-gray-700 uppercase text-xs tracking-wider">GPS Telefona</h3>
+                <button onclick="togglePhoneLocation()" id="phone-loc-btn" class="w-full bg-emerald-600 text-white py-2 px-4 rounded-lg shadow font-medium hover:bg-emerald-700 transition">
+                    Prikaži moju lokaciju
                 </button>
             </div>
+
         </div>
     </div>
 
-    <!-- HARDWARE SCHEMATICS & CODE MODAL -->
-    <div id="docsModal" class="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 hidden">
-        <div class="glass-panel p-6 rounded-2xl max-w-4xl w-full h-[85vh] border border-slate-800 shadow-2xl flex flex-col space-y-4">
-            <div class="flex justify-between items-center border-b border-slate-800 pb-3 shrink-0">
-                <div class="flex items-center gap-2 text-emerald-400">
-                    <i class="fa-solid fa-microchip text-xl"></i>
-                    <h3 class="font-bold text-lg text-slate-100">ESP32-C3 + LoRa XL1278 + GPS Uputstvo</h3>
-                </div>
-                <button onclick="toggleDocsModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
-            </div>
+    <!-- Pozadina zatamnjenja kada je meni otvoren -->
+    <div id="menu-backdrop" onclick="toggleMenu()" class="fixed inset-0 bg-black/50 z-[1500] hidden transition-opacity"></div>
 
-            <!-- Tab Content Area -->
-            <div class="flex-1 overflow-y-auto pr-2 space-y-6 text-xs text-slate-300">
-                <!-- Section 1: Connection Schema -->
-                <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-800 space-y-3">
-                    <h4 class="text-sm font-bold text-blue-400 flex items-center gap-2">
-                        <i class="fa-solid fa-diagram-project"></i> 1. Šema Povezivanja (Pinout Wiring)
-                    </h4>
-                    
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <!-- Transmitter Pinout -->
-                        <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
-                            <span class="font-bold text-emerald-400 text-xs block mb-2">A. TRANSMITER (ESP32-C3 + XL1278 + NEO-6M)</span>
-                            <ul class="space-y-1 font-mono text-[11px] text-slate-400">
-                                <li><b class="text-slate-200">LoRa XL1278 (SPI):</b></li>
-                                <li> VCC ➔ 3.3V | GND ➔ GND</li>
-                                <li> SCK ➔ GPIO 4  | MISO ➔ GPIO 5</li>
-                                <li> MOSI ➔ GPIO 6 | NSS (CS) ➔ GPIO 7</li>
-                                <li> RST ➔ GPIO 3  | DIO0 ➔ GPIO 2</li>
-                                <li class="pt-2"><b class="text-slate-200">NEO-6M GPS (UART):</b></li>
-                                <li> VCC ➔ 3.3V / 5V | GND ➔ GND</li>
-                                <li> TX ➔ GPIO 20 (ESP RX)</li>
-                                <li> RX ➔ GPIO 21 (ESP TX)</li>
-                            </ul>
-                        </div>
-
-                        <!-- Receiver Pinout -->
-                        <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
-                            <span class="font-bold text-blue-400 text-xs block mb-2">B. PRIJEMNIK / RESIVER (ESP32-C3 + XL1278)</span>
-                            <ul class="space-y-1 font-mono text-[11px] text-slate-400">
-                                <li><b class="text-slate-200">LoRa XL1278 (SPI):</b></li>
-                                <li> VCC ➔ 3.3V | GND ➔ GND</li>
-                                <li> SCK ➔ GPIO 4  | MISO ➔ GPIO 5</li>
-                                <li> MOSI ➔ GPIO 6 | NSS (CS) ➔ GPIO 7</li>
-                                <li> RST ➔ GPIO 3  | DIO0 ➔ GPIO 2</li>
-                                <li class="pt-2"><b class="text-slate-200">Komunikacija:</b></li>
-                                <li> ESP32-C3 emituje BLE (Bluetooth Low Energy) podatke ka ovoj aplikaciji.</li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Section 2: Code Snippets -->
-                <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-800 space-y-3">
-                    <h4 class="text-sm font-bold text-blue-400 flex items-center gap-2">
-                        <i class="fa-solid fa-code"></i> 2. Kod za ESP32-C3 Prijemnik (Arduino IDE)
-                    </h4>
-                    <p class="text-slate-400 text-[11px]">
-                        Prijemnik prima LoRa paket od predajnika u formatu <code>ID,LAT,LNG,SPEED</code> (npr. <code>TRK-01,43.6241,21.0084,14.5</code>) i prosleđuje ga preko Bluetooth Serial / BLE konekcije na vaš telefon.
-                    </p>
-                    <pre class="bg-slate-950 p-3 rounded-lg border border-slate-800 overflow-x-auto text-[10px] font-mono text-emerald-400 leading-relaxed">
-#include &lt;SPI.h&gt;
-#include &lt;LoRa.h&gt;
-#include &lt;BLEDevice.h&gt;
-#include &lt;BLEServer.h&gt;
-#include &lt;BLEUtils.h&gt;
-#include &lt;BLE2902.h&gt;
-
-#define SCK 4
-#define MISO 5
-#define MOSI 6
-#define SS 7
-#define RST 3
-#define DI0 2
-
-BLECharacteristic *pCharacteristic;
-bool deviceConnected = false;
-
-#define SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
-#define CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
-
-class MyServerCallbacks: public BLEServerCallbacks {
-    void onConnect(BLEServer* pServer) { deviceConnected = true; };
-    void onDisconnect(BLEServer* pServer) { deviceConnected = false; BLEDevice::startAdvertising(); }
-};
-
-void setup() {
-  Serial.begin(115200);
-  
-  // LoRa Init
-  SPI.begin(SCK, MISO, MOSI, SS);
-  LoRa.setPins(SS, RST, DI0);
-  if (!LoRa.begin(433E6)) { // ili 868E6 u zavisnosti od XL1278 verzije
-    Serial.println("LoRa greška!");
-    while (1);
-  }
-
-  // BLE Init
-  BLEDevice::init("LoRa_GPS_Receiver");
-  BLEServer *pServer = BLEDevice::createServer();
-  pServer->setCallbacks(new MyServerCallbacks());
-  BLEService *pService = pServer->createService(SERVICE_UUID);
-  pCharacteristic = pService->createCharacteristic(
-                      CHARACTERISTIC_UUID,
-                      BLECharacteristic::PROPERTY_READ   |
-                      BLECharacteristic::PROPERTY_NOTIFY
-                    );
-  pCharacteristic->addDescriptor(new BLE2902());
-  pService->start();
-  BLEDevice::startAdvertising();
-}
-
-void loop() {
-  int packetSize = LoRa.parsePacket();
-  if (packetSize) {
-    String incoming = "";
-    while (LoRa.available()) {
-      incoming += (char)LoRa.read();
-    }
-    Serial.println("LoRa Primljeno: " + incoming);
-    if (deviceConnected) {
-      pCharacteristic->setValue(incoming.c_str());
-      pCharacteristic->notify();
-    }
-  }
-}
-                    </pre>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Application Logic Javascript -->
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        // --- State Management ---
-        let map;
-        let mapLayers = {};
-        let activeLayerKey = 'street';
+        let map, currentLayerName = 'standard';
+        let trackers = {}; // Čuva podatke za svaki traker
+        let phoneMarker = null, phoneCircle = null, watchId = null;
+        let bleCharacteristic = null;
 
-        let userMarker = null;
-        let userAccuracyCircle = null;
-        let watchPositionId = null;
-
-        // Trackers store: { trackerId: { color, marker, polyline, path: [[lat, lng], ...], lastData: {} } }
-        const trackers = {};
-        let packetsReceived = 0;
-        let isBtConnected = false;
-        let isDemoMode = false;
-
-        // Custom Distinct Color Palette for Trackers
-        const trackerColors = [
-            '#ef4444', '#3b82f6', '#10b981', '#f59e0b', 
-            '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'
-        ];
-        let colorIndex = 0;
-
-        // --- Bluetooth GATT UUIDs ---
-        const BLE_SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
-        const BLE_CHARACTERISTIC_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
-        let bluetoothDevice = null;
-        let gattCharacteristic = null;
-
-        // --- Initialize App & Leaflet Map ---
-        window.onload = function() {
-            initMap();
-        };
+        // Paleta boja za različite trakere
+        const trackerColors = ['#e11d48', '#2563eb', '#16a34a', '#d97706', '#9333ea', '#0891b2'];
 
         function initMap() {
-            // Default center: Serbia (Trstenik area reference)
-            const defaultLat = 43.6241;
-            const defaultLng = 21.0084;
-
-            map = L.map('map', {
-                zoomControl: false
-            }).setView([defaultLat, defaultLng], 13);
-
-            // Re-position zoom controls to bottom-right
+            map = L.map('map', { zoomControl: false }).setView([44.18, 20.95], 13);
             L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-            // 1. OpenStreetMap (Standard)
-            mapLayers.street = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                maxZoom: 19,
-                attribution: '© OpenStreetMap'
-            });
-
-            // 2. Esri World Imagery (Satellite)
-            mapLayers.satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-                maxZoom: 18,
-                attribution: 'Tiles © Esri'
-            });
-
-            // 3. OpenTopoMap (Topographic)
-            mapLayers.topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-                maxZoom: 17,
-                attribution: '© OpenTopoMap'
-            });
-
-            // Add Default Layer
-            mapLayers.street.addTo(map);
+            setLayer('standard');
         }
 
-        function setMapLayer(layerKey) {
-            if (activeLayerKey === layerKey) return;
-            
-            map.removeLayer(mapLayers[activeLayerKey]);
-            mapLayers[layerKey].addTo(map);
-            activeLayerKey = layerKey;
+        // Upravljanje slojevima mapa
+        let activeTileLayer = null;
+        function setLayer(name) {
+            currentLayerName = name;
+            if (activeTileLayer) map.removeLayer(activeTileLayer);
 
-            // Update UI Button active states
-            ['street', 'satellite', 'topo'].forEach(key => {
-                const btn = document.getElementById(`btn-layer-${key}`);
-                if (key === layerKey) {
-                    btn.className = "px-2.5 py-1.5 rounded-lg text-xs font-medium text-left flex items-center gap-2 bg-blue-600/30 text-blue-300 border border-blue-500/30";
-                } else {
-                    btn.className = "px-2.5 py-1.5 rounded-lg text-xs font-medium text-left flex items-center gap-2 text-slate-400 hover:bg-slate-800";
-                }
+            // Resetuj stil dugmića u meniju
+            ['standard', 'satellite', 'topo', 'dark'].forEach(l => {
+                let btn = document.getElementById('btn-' + l);
+                if(btn) btn.className = "p-2 border rounded-lg text-center hover:bg-gray-50 font-medium text-gray-700 bg-white";
             });
+            let activeBtn = document.getElementById('btn-' + name);
+            if(activeBtn) activeBtn.className = "p-2 border rounded-lg text-center font-medium text-white bg-blue-600";
+
+            if (name === 'standard') {
+                activeTileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+            } else if (name === 'satellite') {
+                activeTileLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 }).addTo(map);
+            } else if (name === 'topo') {
+                activeTileLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 17 }).addTo(map);
+            } else if (name === 'dark') {
+                activeTileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(map);
+            }
+            toggleMenu(); // Zatvori meni nakon izbora
         }
 
-        // --- User Mobile GPS Geolocation ---
-        function toggleUserLocation() {
-            const btn = document.getElementById('toggleUserLocBtn');
+        // Otvaranje/zatvaranje padajućeg menija
+        function toggleMenu() {
+            const menu = document.getElementById('side-menu');
+            const backdrop = document.getElementById('menu-backdrop');
+            const isOpen = menu.classList.contains('translate-x-0');
 
-            if (watchPositionId !== null) {
-                // Stop watching
-                navigator.geolocation.clearWatch(watchPositionId);
-                watchPositionId = null;
-                if (userMarker) map.removeLayer(userMarker);
-                if (userAccuracyCircle) map.removeLayer(userAccuracyCircle);
-                userMarker = null;
-                userAccuracyCircle = null;
-
-                btn.innerText = "Uključi";
-                btn.className = "bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 border border-emerald-500/30 px-2.5 py-1 rounded-md text-xs font-semibold transition";
+            if (isOpen) {
+                menu.classList.remove('translate-x-0');
+                menu.classList.add('-translate-x-full');
+                backdrop.classList.add('hidden');
             } else {
-                if (!navigator.geolocation) {
-                    alert("Geolokacija nije podržana na vašem pregledaču.");
-                    return;
-                }
-
-                btn.innerText = "Isključi";
-                btn.className = "bg-red-600/20 text-red-400 hover:bg-red-600/30 border border-red-500/30 px-2.5 py-1 rounded-md text-xs font-semibold transition";
-
-                watchPositionId = navigator.geolocation.watchPosition(
-                    (position) => {
-                        const lat = position.coords.latitude;
-                        const lng = position.coords.longitude;
-                        const accuracy = position.coords.accuracy;
-
-                        const userIcon = L.divIcon({
-                            className: 'custom-user-pin',
-                            html: `
-                                <div class="relative flex items-center justify-center w-6 h-6">
-                                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                    <span class="relative inline-flex rounded-full h-4 w-4 bg-emerald-500 border-2 border-white shadow-lg"></span>
-                                </div>
-                            `,
-                            iconSize: [24, 24],
-                            iconAnchor: [12, 12]
-                        });
-
-                        if (!userMarker) {
-                            userMarker = L.marker([lat, lng], { icon: userIcon }).addTo(map).bindPopup("Moja trenutna lokacija");
-                            userAccuracyCircle = L.circle([lat, lng], { radius: accuracy, color: '#10b981', fillColor: '#10b981', fillOpacity: 0.15 }).addTo(map);
-                            map.setView([lat, lng], 14);
-                        } else {
-                            userMarker.setLatLng([lat, lng]);
-                            userAccuracyCircle.setLatLng([lat, lng]);
-                            userAccuracyCircle.setRadius(accuracy);
-                        }
-                    },
-                    (err) => {
-                        console.warn("Greška pri čitanju GPS-a: " + err.message);
-                    },
-                    { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
-                );
+                menu.classList.remove('-translate-x-full');
+                menu.classList.add('translate-x-0');
+                backdrop.classList.remove('hidden');
             }
         }
 
-        // --- Auth & Bluetooth Connection Handling ---
-        function openAuthModal() {
-            document.getElementById('authModal').classList.remove('hidden');
-            document.getElementById('authError').classList.add('hidden');
-        }
-
-        function closeAuthModal() {
-            document.getElementById('authModal').classList.add('hidden');
-        }
-
-        async function attemptBtConnect() {
-            const pass = document.getElementById('devicePassword').value;
-            if (pass !== "admin123") {
-                document.getElementById('authError').classList.remove('hidden');
-                return;
-            }
-
-            closeAuthModal();
-
-            if (!navigator.bluetooth) {
-                alert("Web Bluetooth API nije podržan u vašem pregledaču. Koristite Chrome ili Edge na Android/PC-u.");
-                return;
-            }
-
-            try {
-                bluetoothDevice = await navigator.bluetooth.requestDevice({
-                    filters: [{ name: 'LoRa_GPS_Receiver' }],
-                    optionalServices: [BLE_SERVICE_UUID]
-                });
-
-                const server = await bluetoothDevice.gatt.connect();
-                const service = await server.getPrimaryService(BLE_SERVICE_UUID);
-                gattCharacteristic = await service.getCharacteristic(BLE_CHARACTERISTIC_UUID);
-
-                await gattCharacteristic.startNotifications();
-                gattCharacteristic.addEventListener('characteristicvaluechanged', handleBtDataReceived);
-
-                updateConnectionState(true, "Bluetooth Povezan");
-            } catch (error) {
-                console.error("BT Connection Failed:", error);
-                alert("Povezivanje nije uspelo: " + error.message);
-            }
-        }
-
-        function handleBtDataReceived(event) {
-            const decoder = new TextDecoder('utf-8');
-            const dataString = decoder.decode(event.target.value);
-            processIncomingPacket(dataString);
-        }
-
-        function enableDemoMode() {
-            closeAuthModal();
-            isDemoMode = true;
-            updateConnectionState(true, "Demo Simulacija");
-            
-            // Generate initial demo trackers
-            processIncomingPacket("TRK-01,43.6241,21.0084,18.2");
-            processIncomingPacket("TRK-02,43.6350,21.0200,45.0");
-        }
-
-        function updateConnectionState(connected, text) {
-            isBtConnected = connected;
-            const badge = document.getElementById('connectionStatus');
-            const statusText = document.getElementById('statusText');
-            const modeText = document.getElementById('systemMode');
-
-            if (connected) {
-                badge.className = "flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
-                statusText.innerText = text;
-                modeText.innerText = isDemoMode ? "Demo" : "LoRa Live";
-            } else {
-                badge.className = "flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/20";
-                statusText.innerText = "Nije povezano";
-                modeText.innerText = "Standby";
-            }
-        }
-
-        // --- Core LoRa Data Processing & Path Rendering ---
-        function processIncomingPacket(rawString) {
-            // Expected Format: ID,LAT,LNG,SPEED
-            // Example: TRK-01,43.6241,21.0084,12.5
-            const parts = rawString.trim().split(',');
-            if (parts.length < 3) return;
-
-            const id = parts[0];
-            const lat = parseFloat(parts[1]);
-            const lng = parseFloat(parts[2]);
-            const speed = parts[3] ? parseFloat(parts[3]) : 0;
-
-            if (isNaN(lat) || isNaN(lng)) return;
-
-            packetsReceived++;
-            document.getElementById('packetsReceivedCount').innerText = packetsReceived;
+        // Ažuriranje pozicije trakera na mapi
+        function updateTrackerData(id, lat, lng) {
+            let colorIndex = Object.keys(trackers).length % trackerColors.length;
+            let color = trackerColors[colorIndex];
 
             if (!trackers[id]) {
-                // Register new tracker
-                const assignedColor = trackerColors[colorIndex % trackerColors.length];
-                colorIndex++;
+                // Kreiraj novi traker
+                let marker = L.circleMarker([lat, lng], {
+                    radius: 8,
+                    fillColor: color,
+                    color: '#fff',
+                    weight: 2,
+                    opacity: 1,
+                    fillOpacity: 0.9
+                }).addTo(map).bindPopup(`<b>Traker: ${id}</b>`);
 
-                // Custom Colored SVG Marker
-                const trackerIcon = L.divIcon({
-                    className: 'custom-tracker-pin',
-                    html: `
-                        <div style="background-color: ${assignedColor};" class="w-7 h-7 rounded-full flex items-center justify-center border-2 border-white shadow-xl text-white font-bold text-[10px]">
-                            <i class="fa-solid fa-location-dot text-xs"></i>
-                        </div>
-                    `,
-                    iconSize: [28, 28],
-                    iconAnchor: [14, 14]
+                let polyline = L.polyline([], {color: color, weight: 4, opacity: 0.7}).addTo(map);
+
+                trackers[id] = { marker, polyline, history: [], color };
+            }
+
+            let trk = trackers[id];
+            trk.history.push([lat, lng]);
+            trk.marker.setLatLng([lat, lng]);
+            trk.polyline.setLatLngs(trk.history);
+            
+            // Centriraj mapu na poslednji primljeni podatak
+            map.setView([lat, lng]);
+
+            updateTrackerListUI();
+        }
+
+        // Ažuriranje liste trakera u meniju
+        function updateTrackerListUI() {
+            const listEl = document.getElementById('tracker-list');
+            listEl.innerHTML = '';
+
+            for (let id in trackers) {
+                let trk = trackers[id];
+                let lastPos = trk.history[trk.history.length - 1];
+                let div = document.createElement('div');
+                div.className = "flex items-center justify-between p-2 bg-gray-50 rounded-lg border border-gray-100";
+                div.innerHTML = `
+                    <div class="flex items-center space-x-2">
+                        <span class="w-3 h-3 rounded-full" style="background-color: ${trk.color}"></span>
+                        <span class="font-bold text-gray-800">${id}</span>
+                    </div>
+                    <span class="text-xs text-gray-500">${lastPos[0].toFixed(4)}, ${lastPos[1].toFixed(4)}</span>
+                `;
+                listEl.appendChild(div);
+            }
+        }
+
+        // Simulacija podataka za testiranje (bez hardvera)
+        function simulateData() {
+            let baseLat = 44.18 + (Math.random() - 0.5) * 0.05;
+            let baseLng = 20.95 + (Math.random() - 0.5) * 0.05;
+
+            updateTrackerData("TRK-01", baseLat, baseLng);
+            updateTrackerData("TRK-02", baseLat + 0.01, baseLng + 0.01);
+
+            document.getElementById('connection-status').innerHTML = "🟢 Povezano (Simulacija)";
+        }
+
+        // Praćenje lokacije samog telefona
+        function togglePhoneLocation() {
+            const btn = document.getElementById('phone-loc-btn');
+            if (watchId) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+                if (phoneMarker) { map.removeLayer(phoneMarker); phoneMarker = null; }
+                if (phoneCircle) { map.removeLayer(phoneCircle); phoneCircle = null; }
+                btn.innerText = "Prikaži moju lokaciju";
+                btn.className = "w-full bg-emerald-600 text-white py-2 px-4 rounded-lg shadow font-medium hover:bg-emerald-700 transition";
+            } else {
+                if (!navigator.geolocation) {
+                    alert("Geolokacija nije podržana na vašem uređaju.");
+                    return;
+                }
+                btn.innerText = "Sakrij moju lokaciju";
+                btn.className = "w-full bg-red-600 text-white py-2 px-4 rounded-lg shadow font-medium hover:bg-red-700 transition";
+                
+                watchId = navigator.geolocation.watchPosition(pos => {
+                    let lat = pos.coords.latitude;
+                    let lng = pos.coords.longitude;
+                    let acc = pos.coords.accuracy;
+
+                    if (!phoneMarker) {
+                        phoneMarker = L.marker([lat, lng]).addTo(map).bindPopup("<b>Vaša lokacija</b>");
+                        phoneCircle = L.circle([lat, lng], { radius: acc }).addTo(map);
+                    } else {
+                        phoneMarker.setLatLng([lat, lng]);
+                        phoneCircle.setLatLng([lat, lng]);
+                        phoneCircle.setRadius(acc);
+                    }
+                }, err => {
+                    alert("Greška GPS-a: " + err.message);
+                }, { enableHighAccuracy: true });
+            }
+            toggleMenu();
+        }
+
+        // Web Bluetooth Konekcija sa ESP32 Prijemnikom
+        async function connectBLE() {
+            const PASSWORD = prompt("Unesite lozinku za povezivanje sa prijemnikom:", "MojaLozinka123");
+            if (!PASSWORD) return;
+
+            try {
+                const device = await navigator.bluetooth.requestDevice({
+                    filters: [{ services: ['4fa1c001-0000-1000-8000-00805f9b34fb'] }]
                 });
 
-                const marker = L.marker([lat, lng], { icon: trackerIcon }).addTo(map);
-                const polyline = L.polyline([], { color: assignedColor, weight: 4, opacity: 0.8 }).addTo(map);
+                const server = await device.gatt.connect();
+                const service = await server.getPrimaryService('4fa1c001-0000-1000-8000-00805f9b34fb');
+                const characteristic = await service.getCharacteristic('4fa1c002-0000-1000-8000-00805f9b34fb');
 
-                trackers[id] = {
-                    id: id,
-                    color: assignedColor,
-                    marker: marker,
-                    polyline: polyline,
-                    path: [],
-                    lastData: { lat, lng, speed, timestamp: new Date() }
-                };
+                await characteristic.startNotifications();
+                characteristic.addEventListener('characteristicvaluechanged', (event) => {
+                    let decoder = new TextDecoder('utf-8');
+                    let value = decoder.decode(event.target.value);
+                    // Očekivani format sa ESP32: TRK-01|lat|lng
+                    let parts = value.split('|');
+                    if (parts.length >= 3) {
+                        updateTrackerData(parts[0], parseFloat(parts[1]), parseFloat(parts[2]));
+                    }
+                });
 
-                document.getElementById('activeTrackersCount').innerText = Object.keys(trackers).length;
-            }
-
-            // Update existing tracker data & trajectory
-            const trk = trackers[id];
-            trk.path.push([lat, lng]);
-            trk.lastData = { lat, lng, speed, timestamp: new Date() };
-
-            trk.marker.setLatLng([lat, lng]);
-            trk.polyline.setLatLngs(trk.path);
-
-            // Update popup content
-            trk.marker.bindPopup(`
-                <div class="text-xs space-y-1 font-sans">
-                    <b style="color: ${trk.color}">${trk.id}</b><br/>
-                    <b>Brzina:</b> ${speed.toFixed(1)} km/h<br/>
-                    <b>Koordinate:</b> ${lat.toFixed(4)}, ${lng.toFixed(4)}
-                </div>
-            `);
-
-            renderTrackerCards();
-        }
-
-        // Render Cards in Bottom Drawer
-        function renderTrackerCards() {
-            const container = document.getElementById('trackerList');
-            const emptyState = document.getElementById('emptyTrackerState');
-
-            const ids = Object.keys(trackers);
-            if (ids.length === 0) {
-                emptyState.classList.remove('hidden');
-                container.innerHTML = '';
-                return;
-            }
-
-            emptyState.classList.add('hidden');
-            container.innerHTML = ids.map(id => {
-                const trk = trackers[id];
-                const d = trk.lastData;
-                const timeStr = d.timestamp.toLocaleTimeString();
-
-                return `
-                    <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-3 flex items-center justify-between shadow-md">
-                        <div class="flex items-center gap-3">
-                            <div class="w-3 h-10 rounded-full" style="background-color: ${trk.color};"></div>
-                            <div>
-                                <div class="flex items-center gap-2">
-                                    <h4 class="font-bold text-xs text-slate-100">${trk.id}</h4>
-                                    <span class="text-[10px] text-slate-500">${timeStr}</span>
-                                </div>
-                                <div class="text-[11px] font-mono text-slate-400 mt-0.5">
-                                    ${d.lat.toFixed(4)}, ${d.lng.toFixed(4)}
-                                </div>
-                                <div class="text-[10px] text-emerald-400 font-medium">
-                                    <i class="fa-solid fa-gauge-high"></i> ${d.speed.toFixed(1)} km/h
-                                </div>
-                            </div>
-                        </div>
-                        <button onclick="focusTracker('${id}')" class="bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 p-2 rounded-lg text-xs transition">
-                            <i class="fa-solid fa-crosshairs"></i>
-                        </button>
-                    </div>
-                `;
-            }).join('');
-        }
-
-        function focusTracker(id) {
-            if (trackers[id]) {
-                const d = trackers[id].lastData;
-                map.setView([d.lat, d.lng], 16, { animate: true });
-                trackers[id].marker.openPopup();
+                document.getElementById('connection-status').innerHTML = "🟢 Povezano sa ESP32";
+                alert("Uspešno povezano sa Bluetooth prijemnikom!");
+                toggleMenu();
+            } catch (error) {
+                console.error(error);
+                alert("Greška pri Bluetooth povezivanju: " + error);
             }
         }
 
-        // Simulated Incoming Packet for Testing
-        function simulateIncomingPacket() {
-            const demoIds = ['TRK-01', 'TRK-02', 'TRK-03'];
-            const randomId = demoIds[Math.floor(Math.random() * demoIds.length)];
-
-            // Base coordinates around Trstenik area with small offset increments
-            if (!trackers[randomId]) {
-                const baseLat = 43.6241 + (Math.random() - 0.5) * 0.02;
-                const baseLng = 21.0084 + (Math.random() - 0.5) * 0.02;
-                const speed = Math.random() * 60;
-                processIncomingPacket(`${randomId},${baseLat.toFixed(5)},${baseLng.toFixed(5)},${speed.toFixed(1)}`);
-            } else {
-                const last = trackers[randomId].lastData;
-                const newLat = last.lat + (Math.random() - 0.3) * 0.003;
-                const newLng = last.lng + (Math.random() - 0.3) * 0.003;
-                const newSpeed = Math.max(0, last.speed + (Math.random() - 0.5) * 10);
-                processIncomingPacket(`${randomId},${newLat.toFixed(5)},${newLng.toFixed(5)},${newSpeed.toFixed(1)}`);
-            }
-        }
-
-        // UI Toggle Drawer
-        let drawerOpen = true;
-        function toggleDrawer() {
-            const drawer = document.getElementById('bottomDrawer');
-            const icon = document.getElementById('drawerIcon');
-            if (drawerOpen) {
-                drawer.style.transform = 'translateY(calc(100% - 48px))';
-                icon.className = 'fa-solid fa-chevron-up text-slate-400 text-xs';
-            } else {
-                drawer.style.transform = 'translateY(0)';
-                icon.className = 'fa-solid fa-chevron-down text-slate-400 text-xs';
-            }
-            drawerOpen = !drawerOpen;
-        }
-
-        function toggleDocsModal() {
-            const modal = document.getElementById('docsModal');
-            modal.classList.toggle('hidden');
-        }
+        window.onload = initMap;
     </script>
 </body>
 </html>
