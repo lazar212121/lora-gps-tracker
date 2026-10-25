@@ -11,7 +11,7 @@
     <style>
         body, html { height: 100%; margin: 0; padding: 0; overflow: hidden; }
         #map { height: 100vh; width: 100vw; z-index: 1; }
-        .leaflet-bottom.leaflet-right { display: none; } /* Sakriva default Leaflet logo ako smeta */
+        .leaflet-bottom.leaflet-right { display: none; }
     </style>
 </head>
 <body class="bg-gray-100 font-sans">
@@ -30,13 +30,6 @@
         <span class="bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-full shadow-md text-xs font-bold text-gray-700 border border-gray-200" id="connection-status">
             🔴 Nema konekcije
         </span>
-    </div>
-
-    <!-- Brzo dugme za simulaciju u gornjem desnom uglu -->
-    <div class="absolute top-4 right-4 z-[1000]">
-        <button onclick="simulateData()" class="bg-indigo-600 text-white text-xs px-3 py-2 rounded-full shadow-lg font-medium hover:bg-indigo-700 transition active:scale-95">
-            ⚡ Simuliraj
-        </button>
     </div>
 
     <!-- Bočni Padajući Meni (Sidebar Drawer) -->
@@ -99,7 +92,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
         let map, currentLayerName = 'standard';
-        let trackers = {}; // Čuva podatke za svaki traker
+        let trackers = {};
         let phoneMarker = null, phoneCircle = null, watchId = null;
         let bleCharacteristic = null;
 
@@ -107,7 +100,8 @@
         const trackerColors = ['#e11d48', '#2563eb', '#16a34a', '#d97706', '#9333ea', '#0891b2'];
 
         function initMap() {
-            map = L.map('map', { zoomControl: false }).setView([44.18, 20.95], 13);
+            // Početna lokacija postavljena na centar Srbije dok se ne dobije prvi GPS signal
+            map = L.map('map', { zoomControl: false }).setView([44.18, 20.95], 8);
             L.control.zoom({ position: 'bottomright' }).addTo(map);
 
             setLayer('standard');
@@ -119,7 +113,6 @@
             currentLayerName = name;
             if (activeTileLayer) map.removeLayer(activeTileLayer);
 
-            // Resetuj stil dugmića u meniju
             ['standard', 'satellite', 'topo', 'dark'].forEach(l => {
                 let btn = document.getElementById('btn-' + l);
                 if(btn) btn.className = "p-2 border rounded-lg text-center hover:bg-gray-50 font-medium text-gray-700 bg-white";
@@ -136,7 +129,7 @@
             } else if (name === 'dark') {
                 activeTileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(map);
             }
-            toggleMenu(); // Zatvori meni nakon izbora
+            toggleMenu();
         }
 
         // Otvaranje/zatvaranje padajućeg menija
@@ -156,13 +149,12 @@
             }
         }
 
-        // Ažuriranje pozicije trakera na mapi
+        // Ažuriranje pozicije trakera na mapi na osnovu pravih podataka
         function updateTrackerData(id, lat, lng) {
             let colorIndex = Object.keys(trackers).length % trackerColors.length;
             let color = trackerColors[colorIndex];
 
             if (!trackers[id]) {
-                // Kreiraj novi traker
                 let marker = L.circleMarker([lat, lng], {
                     radius: 8,
                     fillColor: color,
@@ -182,8 +174,8 @@
             trk.marker.setLatLng([lat, lng]);
             trk.polyline.setLatLngs(trk.history);
             
-            // Centriraj mapu na poslednji primljeni podatak
-            map.setView([lat, lng]);
+            // Centriraj mapu na najnoviji primljeni podatak
+            map.setView([lat, lng], 15);
 
             updateTrackerListUI();
         }
@@ -207,17 +199,6 @@
                 `;
                 listEl.appendChild(div);
             }
-        }
-
-        // Simulacija podataka za testiranje (bez hardvera)
-        function simulateData() {
-            let baseLat = 44.18 + (Math.random() - 0.5) * 0.05;
-            let baseLng = 20.95 + (Math.random() - 0.5) * 0.05;
-
-            updateTrackerData("TRK-01", baseLat, baseLng);
-            updateTrackerData("TRK-02", baseLat + 0.01, baseLng + 0.01);
-
-            document.getElementById('connection-status').innerHTML = "🟢 Povezano (Simulacija)";
         }
 
         // Praćenje lokacije samog telefona
